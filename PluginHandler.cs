@@ -80,7 +80,7 @@ namespace LogBot
             this.AddEventHandlers(this);
             if (File.Exists(FileManager.GetAppFolder() + $"ServerLogs/players_log_{this.Server.Port}.json"))
             {
-                string context = File.ReadAllText(FileManager.GetAppFolder() + $"ServerLogs/players_log_{this.Server.Port}.json", System.Text.Encoding.UTF8);
+                string context = File.ReadAllText(FileManager.GetAppFolder() + $"ServerLogs/players_log_{this.Server.Port}.json", System.Text.Encoding.Unicode);
                 if (!string.IsNullOrEmpty(context))
                     GetKills = JsonConvert.DeserializeObject<List<KillCount>>(context);
             }
@@ -99,7 +99,7 @@ namespace LogBot
             if (!File.Exists(path))
             {
                 File.Create(path);
-                File.WriteAllText(path, JsonConvert.SerializeObject(GetKills), System.Text.Encoding.UTF8);
+                File.WriteAllText(path, JsonConvert.SerializeObject(GetKills), System.Text.Encoding.Unicode);
             }
         }
         #endregion
@@ -185,7 +185,7 @@ namespace LogBot
 
         public void OnBan(BanEvent ev)
         {
-            if (ev.Duration == 0)
+            if (ev.Admin == null || ev.Duration == 0)
                 return;
             bans_count++;
             bot.Post($"{ev.Player.Name} get banned by {ev.Admin.Name}",
@@ -228,12 +228,12 @@ namespace LogBot
                         ev.Output = "Usage: logbot [on/off]";
                     }
                     ev.Successful = true;
-                    ev.Admin.SendConsoleMessage("Zmieniono!", "yellow");
+                    ev.Admin.SendConsoleMessage("Changed!", "yellow");
                 }
             }
-            if (ev.Query.Contains("bcp"))
+            else if (ev.Query.Contains("bcp"))
             {
-                string[] args = ev.Query.Split(' '); 
+                string[] args = ev.Query.Split(' ');
                 uint time;
                 if (args.Length <= 4)
                 {
@@ -241,17 +241,16 @@ namespace LogBot
                     if (args[2].Contains("@"))
                     {
                         PlayerID = this.Server.GetPlayers().Find(x => x.UserId == args[2]).PlayerId;
-                    } else
+                    }
+                    else
                     {
                         PlayerID = int.Parse(args[2]);
                     }
-                    if(args[0] == "bcp" && uint.TryParse(args[1], out time))
+                    if (args[0] == "bcp" && uint.TryParse(args[1], out time))
                     {
                         List<string> text = args.ToList();
                         text.RemoveRange(0, 3);
-                        string message = "";
-                        
-                        text.ForEach(x => message += x + " "); 
+                        string message = string.Join(" ", text.ToArray());
                         this.Server.GetPlayer(PlayerID).PersonalBroadcast(time, args[3], false);
                     }
                     else
@@ -259,11 +258,29 @@ namespace LogBot
                         ev.Output = "Usage: bcp [minutes] [id/steam] [message]";
                     }
                     ev.Successful = true;
-                    ev.Admin.SendConsoleMessage("Zmieniono!", "yellow");
+                    ev.Admin.SendConsoleMessage("Changed!", "yellow");
                 }
                 else
                 {
                     ev.Output = "Usage: bcp [minutes] [id/steam] [message]";
+                }
+            }
+            else if(ev.Query.Contains("unban")) 
+            {
+                string path = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + @"\Roaming\SCP Secret Labolatory\config\true\";
+                string[] args = ev.Query.Split(' ');
+                if (args.Length == 3)
+                {
+                    string file = "";
+                    if (args[1] == "ip")
+                        file = "IpBans.txt";
+                    else if (args[1] == "id")
+                        file = "UserIdBans.txt";
+                    List<string> list = File.ReadAllLines(path + file).ToList();
+                    if (list.Exists(x => x.Contains(args[2]))){
+                        list.Remove(list.Find(x => x.Contains(args[2])));
+                        File.WriteAllLines(path + file, list.ToArray());
+                    }
                 }
             }
         }
