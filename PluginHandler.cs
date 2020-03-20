@@ -7,13 +7,11 @@ using Smod2.Commands;
 
 using System;
 using System.Collections.Generic;
-using System.Net;
-using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.IO;
+using System.Linq;
 
 using Newtonsoft.Json;
-using System.Linq;
 
 namespace LogBot
 {
@@ -28,13 +26,13 @@ namespace LogBot
     SmodMajor = 3,
     SmodMinor = 8,
     SmodRevision = 0,
-    version = "2.6")]
+    version = "2.7")]
     public class PluginHandler : Plugin, IEventHandlerPlayerDie, IEventHandlerRoundEnd, IEventHandlerAdminQuery, IEventHandlerBan, IEventHandlerRoundStart
     {
         private BotHandler bot;
         private List<KillCount> GetKills = new List<KillCount>();
         private List<string> act_combo = new List<string>();
-        public bool canLog = true;
+        public bool canLog = true, counting = true;
         public int teamkills_count, bans_count;
         Settings settings;
 
@@ -42,11 +40,15 @@ namespace LogBot
 
         public override void OnDisable()
         {
+            bot = null;
+            canLog = false;
+            counting = false;
             Info("LogBot has been disabled");
         }
 
         public override void OnEnable()
         {
+            counting = true;
             try
             {
                 if (this.config.Count == 0)
@@ -55,8 +57,8 @@ namespace LogBot
                         autobans = true,
                         autoban_text = "%nick% has been banned automatically",
                     autoban_reason_text = "You've killed too many people from your team, your punishment duration is %time%"};
-                    File.WriteAllText(this.PluginDirectory + $"\\servers\\{this.Server.Port}\\config.json", JsonConvert.SerializeObject(default_settings));
-                    this.Warn($"Go to '{this.PluginDirectory}\\servers\\{ this.Server.Port}\\config.json' and change webhook url!");
+                    File.WriteAllText(this.PluginDirectory + $"/servers/{this.Server.Port}/config.json", JsonConvert.SerializeObject(default_settings));
+                    this.Warn($"Go to '{this.PluginDirectory}/servers/{ this.Server.Port}/config.json' and change webhook url!");
                     return;
                 }
                 else
@@ -90,6 +92,18 @@ namespace LogBot
         public override void Register()
         {
             //Will be implemented auto update
+            GetCount().GetAwaiter();
+        }
+
+        private async Task GetCount()
+        {
+            string path = this.PluginDirectory + $"/servers/{this.Server.Port}/count.txt";
+            Info(path);
+            while (this.counting)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(10));
+                File.WriteAllText(path, Server.GetPlayers().Count + "/" + Server.MaxPlayers);
+            }
         }
 
         private void SaveBans() 
@@ -218,10 +232,15 @@ namespace LogBot
                     if (args[1] == "on")
                     {
                         canLog = true;
+                        this.EventManager.RemoveEventHandlers(this);
+                        this.AddEventHandlers(this);
                     }
                     else if (args[1] == "off")
                     {
-                        canLog = false;
+                        this.EventManager.RemoveEventHandlers(this);
+                        this.AddEventHandler(typeof(AdminQueryEvent), this);
+                        this.AddEventHandler(typeof(AdminQueryEvent), this);
+                        this.AddEventHandler(typeof(AdminQueryEvent), this);
                     }
                     else
                     {
