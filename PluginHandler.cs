@@ -26,13 +26,13 @@ namespace LogBot
     SmodMajor = 3,
     SmodMinor = 8,
     SmodRevision = 0,
-    version = "2.7")]
+    version = "2.8")]
     public class PluginHandler : Plugin, IEventHandlerPlayerDie, IEventHandlerRoundEnd, IEventHandlerAdminQuery, IEventHandlerBan, IEventHandlerRoundStart
     {
         private BotHandler bot;
         private List<KillCount> GetKills = new List<KillCount>();
         private List<string> act_combo = new List<string>();
-        public bool canLog = true, counting = true;
+        public bool canLog = true, counting = true, reading = false;
         public int teamkills_count, bans_count;
         Settings settings;
 
@@ -76,9 +76,11 @@ namespace LogBot
                 this.Error($"Can't read webhook config, make sure your config is correct!");
                 return;
             }
-            if(settings.autobans)
-
-            bot = new BotHandler(this.Server.Name, settings.webhook_url);
+            string pipeid = null;
+            if (settings.extended_bot)
+                pipeid = this.Server.Port.ToString();
+            if(settings.autobans || settings.extended_bot)
+                bot = new BotHandler(settings.webhook_url, pipeid);
             this.AddEventHandlers(this);
             if (File.Exists(FileManager.GetAppFolder() + $"ServerLogs/players_log_{this.Server.Port}.json"))
             {
@@ -92,18 +94,53 @@ namespace LogBot
         public override void Register()
         {
             //Will be implemented auto update
-            GetCount().GetAwaiter();
+            SendCount().GetAwaiter();
         }
 
-        private async Task GetCount()
+        private async Task SendCount()
         {
-            string path = this.PluginDirectory + $"/servers/{this.Server.Port}/count.txt";
-            Info(path);
             while (this.counting)
             {
-                await Task.Delay(TimeSpan.FromSeconds(10));
-                File.WriteAllText(path, Server.GetPlayers().Count + "/" + Server.MaxPlayers);
+                await Task.Delay(10000);
+                if (bot != null && !reading)
+                    if (bot.stream != null)
+                        if (bot.stream.IsConnected)
+                            ReadWait().GetAwaiter();
+                await bot.SendToBot(MessageType.SERVER_COUNT, this.Server.GetPlayers().Count);
             }
+        }
+
+        private async Task ReadWait()
+        {
+            reading = true;
+            while (bot.stream.IsConnected)
+            {
+                BotHandler.Message msg = await bot.WaitForMessage();
+                try
+                {
+                    switch ((MessageType)msg.destiny)
+                    {
+                        case MessageType.SWITCH_LOGBOT:
+                            SwitchLogbot((string)msg.data);
+                            break;
+                        case MessageType.SWITCH_AUTOBANS:
+                            if ((string)msg.data == "on")
+                                this.settings.autobans = true;
+                            else if((string)msg.data == "off")
+                                this.settings.autobans = false;
+                            break;
+                        case MessageType.BAN:
+                            string send = (string)msg.data;
+                            this.Server.GetPlayers().Find(x => x.UserId == send.Split(' ')[0]).Ban(int.Parse(send.Split(' ')[1]));
+                            break;
+                    }
+                } 
+                catch
+                {
+                    await bot.SendToBot(MessageType.ERROR, null);
+                }
+}
+            reading = false;
         }
 
         private void SaveBans() 
@@ -229,25 +266,16 @@ namespace LogBot
                 string[] args = ev.Query.Split(' ');
                 if (args[0] == "logbot")
                 {
-                    if (args[1] == "on")
+                    if (SwitchLogbot(args[1]))
                     {
-                        canLog = true;
-                        this.EventManager.RemoveEventHandlers(this);
-                        this.AddEventHandlers(this);
-                    }
-                    else if (args[1] == "off")
-                    {
-                        this.EventManager.RemoveEventHandlers(this);
-                        this.AddEventHandler(typeof(AdminQueryEvent), this);
-                        this.AddEventHandler(typeof(AdminQueryEvent), this);
-                        this.AddEventHandler(typeof(AdminQueryEvent), this);
+                        ev.Successful = true;
+                        ev.Admin.SendConsoleMessage("Changed!", "yellow");
                     }
                     else
                     {
-                        ev.Output = "Usage: logbot [on/off]";
+                        ev.Successful = false;
+                        ev.Admin.SendConsoleMessage("Usage: logbot [on/off]", "red");
                     }
-                    ev.Successful = true;
-                    ev.Admin.SendConsoleMessage("Changed!", "yellow");
                 }
             }
             else if (ev.Query.Contains("bcp"))
@@ -304,6 +332,27 @@ namespace LogBot
             }
         }
 
+        private bool SwitchLogbot(string arg)
+        {
+
+            if (arg == "on")
+            {
+                canLog = true;
+                this.EventManager.RemoveEventHandlers(this);
+                this.AddEventHandlers(this);
+            }
+            else if (arg == "off")
+            {
+                this.EventManager.RemoveEventHandlers(this);
+                this.AddEventHandler(typeof(IEventHandlerAdminQuery), this);
+            }
+            else
+            {
+                return false;
+            }
+            return true;
+        }
+
         public struct KillCount 
         {
             public string userID;
@@ -321,6 +370,8 @@ namespace LogBot
             public string autoban_text;
             [JsonProperty]
             public string autoban_reason_text;
+            [JsonProperty]
+            public bool extended_bot;
         }
     }
 }

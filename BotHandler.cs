@@ -1,23 +1,53 @@
 ﻿using Newtonsoft.Json;
 using System;
+using System.IO;
+using System.IO.Pipes;
 using System.Net;
+using System.Runtime.Serialization.Formatters.Binary;
 using System.Threading.Tasks;
 
 namespace LogBot
 {
     class BotHandler
     {
-        private string server_name;
-
         public Webhook webhook;
-        private Channel channel;
-        public BotHandler(string _server_name, string webhook_url = null)
+        public PipeStream stream;
+        public BotHandler(string webhook_url, string bot_indetificator = null)
         {
             if (webhook_url != null)
             {
                 webhook = new Webhook(webhook_url);
-                server_name = _server_name;
             }
+            if (bot_indetificator != null)
+            {
+                PipingToBot(bot_indetificator).GetAwaiter();
+            }
+        }
+
+        public async Task SendToBot(MessageType cel, object data)
+        {
+            if (stream == null)
+                return;
+            if (!stream.IsConnected)
+                return;
+            byte[] buf = new Message((byte)cel, data).Serialize();
+            stream.Write(buf, 0, buf.Length);
+            await stream.FlushAsync();
+        }
+
+        public async Task<Message> WaitForMessage()
+        {
+            byte[] buf = new byte[1024];
+            await stream.ReadAsync(buf, 0, buf.Length);
+            return Message.Deserialize(buf);
+        }
+
+        private async Task PipingToBot(string name)
+        {
+            var stream = new NamedPipeServerStream(name, PipeDirection.InOut);
+            await stream.WaitForConnectionAsync();
+            this.stream = stream;
+            WaitForMessage().GetAwaiter();
         }
 
         public void Post(string text, string description, string killer_id, int color)
@@ -42,52 +72,6 @@ namespace LogBot
                 
             };
             webhook.PostData(obj);
-        }
-
-        public class Channel
-        {
-            private Uri _Uri;
-            public Channel(string URL)
-            {
-                if (!Uri.TryCreate(URL, UriKind.Absolute, out _Uri))
-                {
-                    throw new UriFormatException();
-                }
-            }
-            public string PostData(Structure data)
-            {
-                using (WebClient wb = new WebClient())
-                {
-                    wb.Headers.Add(HttpRequestHeader.ContentType, "application/json");
-                    return wb.UploadString(_Uri, "PATCH", JsonConvert.SerializeObject(data));
-                }
-            }
-
-            public struct Audit
-            {
-            
-            }
-
-            public struct Structure
-            {
-                public string name;
-                public int posision;
-                public string topic;
-                public bool nsfw;
-                public int rate_limit_per_user;
-                public int bitrate;
-                public int user_limit;
-                public Permission[] permission_overwrites;
-                public int parent_id;
-            }
-
-            public struct Permission
-            {
-                public int id;
-                public string type;
-                public int allow;
-                public int deny;
-            }
         }
 
         public class Webhook
@@ -126,19 +110,6 @@ namespace LogBot
                 public string url;
                 public int color;
                 public Footer footer;
-                public Image image;
-                public Thumbnail thumbnail;
-                public Video video;
-                public Provider provider;
-                public Author author;
-                public Field[] fields;
-            }
-
-            public struct Field
-            {
-                public string name;
-                public string value;
-                public bool inline;
             }
 
             public struct Footer
@@ -147,43 +118,42 @@ namespace LogBot
                 public string icon_url;
                 public string proxy_icon_url;
             }
+        }
+        [Serializable]
+        public struct Message
+        {
+            public byte destiny { private set; get; }
+            public object data { private set; get; }
 
-            public struct Image
+            public Message(byte destiny, object data)
             {
-                public string url;
-                public string proxy_url;
-                public int height;
-                public int width;
+                this.destiny = destiny;
+                this.data = data;
             }
 
-            public struct Thumbnail
+            public static Message Deserialize(byte[] raw_data)
             {
-                public string url;
-                public string proxy_url;
-                public int height;
-                public int width;
+                var stream = new MemoryStream(raw_data);
+                var formatter = new BinaryFormatter();
+                return (Message)formatter.Deserialize(stream);
             }
 
-            public struct Video
+            public byte[] Serialize()
             {
-                public string url;
-                public int height;
-                public int width;
-            }
-
-            public struct Provider
-            {
-                public string name;
-                public string url;
-            }
-
-            public struct Author
-            {
-                public string name;
-                public string url;
-                public string icon_url;
-                public string proxy_icon_url;
+                var formatter = new BinaryFormatter();
+                var stream = new MemoryStream();
+                formatter.Serialize(stream, this);
+                return stream.ToArray();
             }
         }
+    }
+    public enum MessageType
+    {
+        SWITCH_LOGBOT,
+        SWITCH_AUTOBANS,
+        SERVER_COUNT,
+        BAN,
+        UNBAN,
+        ERROR
     }
 }
