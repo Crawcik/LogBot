@@ -56,7 +56,8 @@ namespace LogBot
                     Settings default_settings = new Settings() { webhook_url = "none",
                         autobans = true,
                         autoban_text = "%nick% has been banned automatically",
-                    autoban_reason_text = "You've killed too many people from your team, your punishment duration is %time%"};
+                        autoban_reason_text = "You've killed too many people from your team, your punishment duration is %time%",
+                        extended_bot = false };
                     File.WriteAllText(this.PluginDirectory + $"/servers/{this.Server.Port}/config.json", JsonConvert.SerializeObject(default_settings));
                     this.Warn($"Go to '{this.PluginDirectory}/servers/{ this.Server.Port}/config.json' and change webhook url!");
                     return;
@@ -78,7 +79,10 @@ namespace LogBot
             }
             string pipeid = null;
             if (settings.extended_bot)
+            {
                 pipeid = this.Server.Port.ToString();
+                Info("Extended bot pipe name: " + pipeid);
+            }
             if(settings.autobans || settings.extended_bot)
                 bot = new BotHandler(settings.webhook_url, pipeid);
             this.AddEventHandlers(this);
@@ -139,7 +143,7 @@ namespace LogBot
                 {
                     await bot.SendToBot(MessageType.ERROR, null);
                 }
-}
+            }
             reading = false;
         }
 

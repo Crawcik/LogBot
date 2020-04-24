@@ -47,7 +47,6 @@ namespace LogBot
             var stream = new NamedPipeServerStream(name, PipeDirection.InOut);
             await stream.WaitForConnectionAsync();
             this.stream = stream;
-            WaitForMessage().GetAwaiter();
         }
 
         public void Post(string text, string description, string killer_id, int color)
@@ -58,8 +57,7 @@ namespace LogBot
                 embeds = new Webhook.Embed[]
                 {
                     new Webhook.Embed()
-                    {
-                        
+                    { 
                         title = text,
                         description = description,
                         color = color,
