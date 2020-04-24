@@ -1,9 +1,6 @@
-﻿using Smod2;
-using Smod2.API;
-using Smod2.Attributes;
-using Smod2.Events;
-using Smod2.EventHandlers;
-using Smod2.Commands;
+﻿using EXILED;
+using EXILED.ApiObjects;
+using EXILED.Extensions;
 
 using System;
 using System.Collections.Generic;
@@ -15,19 +12,7 @@ using Newtonsoft.Json;
 
 namespace LogBot
 {
-
-    [PluginDetails(
-    author = "Crawcik",
-    configPrefix = "logbot",
-    description = "Specified Logs to discord",
-    id = "logbot",
-    langFile = "logbot",
-    name = "LogBot",
-    SmodMajor = 3,
-    SmodMinor = 8,
-    SmodRevision = 0,
-    version = "2.8")]
-    public class PluginHandler_SMOD2 : Plugin, IEventHandlerPlayerDie, IEventHandlerRoundEnd, IEventHandlerAdminQuery, IEventHandlerBan, IEventHandlerRoundStart
+    public class PluginHandler_EXILED : Plugin, Eve
     {
         private BotHandler bot;
         private List<KillCount> GetKills = new List<KillCount>();
@@ -37,13 +22,13 @@ namespace LogBot
         Settings settings;
 
         #region Startup
-
+        public override string getName => "LogBot";
         public override void OnDisable()
         {
             bot = null;
             canLog = false;
             counting = false;
-            Info("LogBot has been disabled");
+            Log.Info("LogBot has been disabled");
         }
 
         public override void OnEnable()
@@ -51,7 +36,7 @@ namespace LogBot
             counting = true;
             try
             {
-                if (this.config.Count == 0)
+                if (this.)
                 {
                     Settings default_settings = new Settings() { webhook_url = "none",
                         autobans = true,
@@ -93,58 +78,6 @@ namespace LogBot
                     GetKills = JsonConvert.DeserializeObject<List<KillCount>>(context);
             }
             Info("LogBot has started");
-        }
-
-        public override void Register()
-        {
-            //Will be implemented auto update
-            SendCount().GetAwaiter();
-        }
-
-        private async Task SendCount()
-        {
-            while (this.counting)
-            {
-                await Task.Delay(10000);
-                if (bot != null && !reading)
-                    if (bot.stream != null)
-                        if (bot.stream.IsConnected)
-                            ReadWait().GetAwaiter();
-                await bot.SendToBot(MessageType.SERVER_COUNT, this.Server.GetPlayers().Count);
-            }
-        }
-
-        private async Task ReadWait()
-        {
-            reading = true;
-            while (bot.stream.IsConnected)
-            {
-                BotHandler.Message msg = await bot.WaitForMessage();
-                try
-                {
-                    switch ((MessageType)msg.destiny)
-                    {
-                        case MessageType.SWITCH_LOGBOT:
-                            SwitchLogbot((string)msg.data);
-                            break;
-                        case MessageType.SWITCH_AUTOBANS:
-                            if ((string)msg.data == "on")
-                                this.settings.autobans = true;
-                            else if((string)msg.data == "off")
-                                this.settings.autobans = false;
-                            break;
-                        case MessageType.BAN:
-                            string send = (string)msg.data;
-                            this.Server.GetPlayers().Find(x => x.UserId == send.Split(' ')[0]).Ban(int.Parse(send.Split(' ')[1]));
-                            break;
-                    }
-                } 
-                catch
-                {
-                    await bot.SendToBot(MessageType.ERROR, null);
-                }
-            }
-            reading = false;
         }
 
         private void SaveBans() 
