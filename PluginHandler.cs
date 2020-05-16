@@ -3,13 +3,14 @@ using Smod2.API;
 using Smod2.Attributes;
 using Smod2.Events;
 using Smod2.EventHandlers;
-using Smod2.Commands;
 
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.IO;
 using System.Linq;
+using System.Reflection;
+using System.Text;
 
 using Newtonsoft.Json;
 
@@ -24,16 +25,26 @@ namespace LogBot
     langFile = "logbot",
     name = "LogBot",
     SmodMajor = 3,
-    SmodMinor = 8,
+    SmodMinor = 7,
     SmodRevision = 0,
     version = "2.8")]
-    public class PluginHandler_SMOD2 : Plugin, IEventHandlerPlayerDie, IEventHandlerRoundEnd, IEventHandlerAdminQuery, IEventHandlerBan, IEventHandlerRoundStart
+    public class LogbotManager : Plugin, IEventHandlerPlayerDie, IEventHandlerRoundEnd, IEventHandlerAdminQuery, IEventHandlerBan, IEventHandlerRoundStart
     {
+        public string PluginDirectory {
+            get
+            {
+                string codeBase = Assembly.GetExecutingAssembly().CodeBase;
+                UriBuilder uri = new UriBuilder(codeBase);
+                return Path.GetDirectoryName(Uri.UnescapeDataString(uri.Path)) + $"/{this.Details.name}";
+            }
+        }
+
         private BotHandler bot;
         private List<KillCount> GetKills = new List<KillCount>();
         private List<string> act_combo = new List<string>();
         public bool canLog = true, counting = true, reading = false;
         public int teamkills_count, bans_count;
+        public bool isAutoBan = false;
         Settings settings;
 
         #region Startup
@@ -48,43 +59,42 @@ namespace LogBot
 
         public override void OnEnable()
         {
-            counting = true;
+        
+        }
+
+        public override void Register()
+        {
+            Settings default_settings = new Settings()
+            {
+                webhook_url = "none",
+                autobans = true,
+                autoban_text = "%nick% has been banned automatically",
+                autoban_reason_text = "You've killed too many people from your team, your punishment duration is %time%",
+            };
             try
             {
-                if (this.config.Count == 0)
-                {
-                    Settings default_settings = new Settings() { webhook_url = "none",
-                        autobans = true,
-                        autoban_text = "%nick% has been banned automatically",
-                        autoban_reason_text = "You've killed too many people from your team, your punishment duration is %time%",
-                        extended_bot = false };
-                    File.WriteAllText(this.PluginDirectory + $"/servers/{this.Server.Port}/config.json", JsonConvert.SerializeObject(default_settings));
-                    this.Warn($"Go to '{this.PluginDirectory}/servers/{ this.Server.Port}/config.json' and change webhook url!");
-                    return;
-                }
-                else
-                {
-                    settings = this.config.ToObject<Settings>();
-                    if (settings.webhook_url == null || settings.webhook_url == "" || settings.webhook_url == "none")
-                    {
-                        this.Warn($"Can't read webhook address, make sure you write the webhook link to config!");
-                        return;
-                    }
-                }
+                settings = JsonConvert.DeserializeObject<Settings>(File.ReadAllText(this.PluginDirectory + $"/config.json", Encoding.Unicode));
+                counting = true;
             }
             catch
             {
-                this.Error($"Can't read webhook config, make sure your config is correct!");
+                if (!Directory.Exists(this.PluginDirectory))
+                {
+                    Directory.CreateDirectory(this.PluginDirectory);
+                }
+                if (!File.Exists(this.PluginDirectory + $"/config.json"))
+                {
+                    File.Create(this.PluginDirectory + $"/config.json");
+                    File.WriteAllText(this.PluginDirectory + $"/config.json", JsonConvert.SerializeObject(default_settings), Encoding.Unicode);
+                    this.Warn($"Go to '{this.PluginDirectory}/config.json' and change webhook url!");
+                }
+                this.Error($"Can't read plugin config, make sure your config is correct!");
                 return;
             }
-            string pipeid = null;
-            if (settings.extended_bot)
+            if (!string.IsNullOrWhiteSpace(settings.webhook_url))
             {
-                pipeid = this.Server.Port.ToString();
-                Info("Extended bot pipe name: " + pipeid);
+                bot = new BotHandler(settings.webhook_url);
             }
-            if(settings.autobans || settings.extended_bot)
-                bot = new BotHandler(settings.webhook_url, pipeid);
             this.AddEventHandlers(this);
             if (File.Exists(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + $"SCP Secret Laboratory/ServerLogs/players_log_{this.Server.Port}.json"))
             {
@@ -93,58 +103,6 @@ namespace LogBot
                     GetKills = JsonConvert.DeserializeObject<List<KillCount>>(context);
             }
             Info("LogBot has started");
-        }
-
-        public override void Register()
-        {
-            //Will be implemented auto update
-            SendCount().GetAwaiter();
-        }
-
-        private async Task SendCount()
-        {
-            while (this.counting)
-            {
-                await Task.Delay(10000);
-                if (bot != null && !reading)
-                    if (bot.stream != null)
-                        if (bot.stream.IsConnected)
-                            ReadWait().GetAwaiter();
-                await bot.SendToBot(MessageType.SERVER_COUNT, this.Server.GetPlayers().Count);
-            }
-        }
-
-        private async Task ReadWait()
-        {
-            reading = true;
-            while (bot.stream.IsConnected)
-            {
-                BotHandler.Message msg = await bot.WaitForMessage();
-                try
-                {
-                    switch ((MessageType)msg.destiny)
-                    {
-                        case MessageType.SWITCH_LOGBOT:
-                            SwitchLogbot((string)msg.data);
-                            break;
-                        case MessageType.SWITCH_AUTOBANS:
-                            if ((string)msg.data == "on")
-                                this.settings.autobans = true;
-                            else if((string)msg.data == "off")
-                                this.settings.autobans = false;
-                            break;
-                        case MessageType.BAN:
-                            string send = (string)msg.data;
-                            this.Server.GetPlayers().Find(x => x.UserId == send.Split(' ')[0]).Ban(int.Parse(send.Split(' ')[1]));
-                            break;
-                    }
-                } 
-                catch
-                {
-                    await bot.SendToBot(MessageType.ERROR, null);
-                }
-            }
-            reading = false;
         }
 
         private void SaveBans() 
@@ -163,16 +121,17 @@ namespace LogBot
             this.Debug($"Someone die");
             if (ev.Killer.PlayerId == ev.Player.PlayerId || !canLog)
                 return;
-            if ((ev.Killer.TeamRole.Team.Equals(Team.NINETAILFOX) && ev.Player.TeamRole.Team.Equals(Team.SCIENTIST)) ||
-                (ev.Killer.TeamRole.Team.Equals(Team.SCIENTIST) && ev.Player.TeamRole.Team.Equals(Team.NINETAILFOX)) ||
-                (ev.Killer.TeamRole.Team.Equals(Team.CHAOS_INSURGENCY) && ev.Player.TeamRole.Team.Equals(Team.CLASSD)) ||
-                (ev.Killer.TeamRole.Team.Equals(Team.CLASSD) && ev.Player.TeamRole.Team.Equals(Team.CHAOS_INSURGENCY))) 
+            if ((ev.Killer.TeamRole.Team.Equals(Team.MTF) && ev.Player.TeamRole.Team.Equals(Team.RSC)) ||
+                (ev.Killer.TeamRole.Team.Equals(Team.RSC) && ev.Player.TeamRole.Team.Equals(Team.MTF)) ||
+                (ev.Killer.TeamRole.Team.Equals(Team.CHI) && ev.Player.TeamRole.Team.Equals(Team.CDP)) ||
+                (ev.Killer.TeamRole.Team.Equals(Team.CHI) && ev.Player.TeamRole.Team.Equals(Team.CHI))) 
             {
                 int index = RegisterKiller(ev.Killer);
                 this.Debug($"Logging kill");
                 bot.Post($"{ev.Killer.Name} killed {ev.Player.Name} using {Enum.GetName(typeof(DamageType), ev.DamageTypeVar)}",
                     $"{ev.Killer.TeamRole.Name} killed {ev.Player.TeamRole.Name}", ev.Killer.UserId + ev.Killer.IpAddress + "\tKills: " + GetKills[index].kills, 0);
-            } else if (ev.Killer.TeamRole.Team == ev.Player.TeamRole.Team)
+            } 
+            else if (ev.Killer.TeamRole.Team == ev.Player.TeamRole.Team)
             {
                 int index = RegisterKiller(ev.Killer);
                 this.Debug($"Logging kill");
@@ -231,7 +190,8 @@ namespace LogBot
         {
             string reason = settings.autoban_reason_text.Replace("%time%", time_text);
             string broadcast_text = settings.autoban_text.Replace("%nick%", ply.Name);
-            this.Server.Map.Broadcast(3, broadcast_text, false);
+            this.Server.Map.Broadcast(3, broadcast_text, true);
+            this.isAutoBan = true;
             bot.Post(broadcast_text,
                 $"Time: {time_text}", ply.UserId + ply.IpAddress + "\tKills: " + GetKills.Find(x=>x.userID == ply.UserId).kills, 16732240);
             ply.Ban(duration, reason);
@@ -239,10 +199,13 @@ namespace LogBot
 
         public void OnBan(BanEvent ev)
         {
-            if (ev.Admin == null || ev.Duration == 0)
-                return;
             bans_count++;
-            bot.Post($"{ev.Player.Name} get banned by {ev.Admin.Name}",
+            if (this.isAutoBan || ev.Duration == 0)
+            {
+                this.isAutoBan = false;
+                return;
+            }    
+            bot.Post($"{ev.Player.Name} get banned",
                 $"Time: {ev.Duration/60} hours", ev.Player.UserId + ev.Player.IpAddress + "\tKills: " + GetKills.Find(x=>x.userID == ev.Player.UserId).kills, 16732240);
         }
 
@@ -373,8 +336,8 @@ namespace LogBot
             public string autoban_text;
             [JsonProperty]
             public string autoban_reason_text;
-            [JsonProperty]
-            public bool extended_bot;
         }
+
+
     }
 }

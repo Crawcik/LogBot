@@ -4,48 +4,18 @@ using System.IO;
 using System.IO.Pipes;
 using System.Net;
 using System.Runtime.Serialization.Formatters.Binary;
-using System.Threading.Tasks;
+
 namespace LogBot
 {
     class BotHandler
     {
         public Webhook webhook;
-        public PipeStream stream;
-        public BotHandler(string webhook_url, string bot_indetificator = null)
+        public BotHandler(string webhook_url)
         {
             if (webhook_url != null)
             {
                 webhook = new Webhook(webhook_url);
             }
-            if (bot_indetificator != null)
-            {
-                PipingToBot(bot_indetificator).GetAwaiter();
-            }
-        }
-
-        public async Task SendToBot(MessageType cel, object data)
-        {
-            if (stream == null)
-                return;
-            if (!stream.IsConnected)
-                return;
-            byte[] buf = new Message((byte)cel, data).Serialize();
-            stream.Write(buf, 0, buf.Length);
-            await stream.FlushAsync();
-        }
-
-        public async Task<Message> WaitForMessage()
-        {
-            byte[] buf = new byte[1024];
-            await stream.ReadAsync(buf, 0, buf.Length);
-            return Message.Deserialize(buf);
-        }
-
-        private async Task PipingToBot(string name)
-        {
-            var stream = new NamedPipeServerStream(name, PipeDirection.InOut);
-            await stream.WaitForConnectionAsync();
-            this.stream = stream;
         }
 
         public void Post(string text, string description, string killer_id, int color)

@@ -7,14 +7,11 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LogBot", "LogBot.csproj", "
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
-		Exiled|Any CPU = Exiled|Any CPU
 		Smod2|Any CPU = Smod2|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{AE50868C-53A3-43C9-B16A-96D8B6F54E47}.Exiled|Any CPU.ActiveCfg = Exiled|Any CPU
-		{AE50868C-53A3-43C9-B16A-96D8B6F54E47}.Exiled|Any CPU.Build.0 = Exiled|Any CPU
-		{AE50868C-53A3-43C9-B16A-96D8B6F54E47}.Smod2|Any CPU.ActiveCfg = Smod2|Any CPU
-		{AE50868C-53A3-43C9-B16A-96D8B6F54E47}.Smod2|Any CPU.Build.0 = Smod2|Any CPU
+		{AE50868C-53A3-43C9-B16A-96D8B6F54E47}.Smod2|Any CPU.ActiveCfg = Release|Any CPU
+		{AE50868C-53A3-43C9-B16A-96D8B6F54E47}.Smod2|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
