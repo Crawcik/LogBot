@@ -1,14 +1,12 @@
 ﻿using Smod2;
 using Smod2.API;
 using Smod2.Attributes;
-using Smod2.Events;
 using Smod2.EventHandlers;
 
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.IO;
-using System.Linq;
 using System.Reflection;
 using System.Text;
 
@@ -27,8 +25,8 @@ namespace LogBot
     SmodMajor = 3,
     SmodMinor = 7,
     SmodRevision = 0,
-    version = "2.8")]
-    public class LogbotManager : Plugin, IEventHandlerPlayerDie, IEventHandlerRoundEnd, IEventHandlerAdminQuery, IEventHandlerBan, IEventHandlerRoundStart
+    version = "2.9")]
+    public partial class LogbotManager : Plugin
     {
         public string PluginDirectory {
             get
@@ -59,86 +57,82 @@ namespace LogBot
 
         public override void OnEnable()
         {
-        
+            //That's because port number is loaded with some delay.
+            this.Debug("Config will be loaded in 8 seconds");
+            LoadConfig().GetAwaiter();
         }
 
-        public override void Register()
+        public async Task LoadConfig()
         {
-            Settings default_settings = new Settings()
-            {
-                webhook_url = "none",
-                autobans = true,
-                autoban_text = "%nick% has been banned automatically",
-                autoban_reason_text = "You've killed too many people from your team, your punishment duration is %time%",
-            };
+
+            await Task.Delay(TimeSpan.FromSeconds(8));
+            string path = $"{this.PluginDirectory}/{this.Server.Port}/config.json";
             try
             {
-                settings = JsonConvert.DeserializeObject<Settings>(File.ReadAllText(this.PluginDirectory + $"/config.json", Encoding.Unicode));
+                settings = JsonConvert.DeserializeObject<Settings>(File.ReadAllText(path, Encoding.UTF8));
                 counting = true;
             }
-            catch
+            catch (Exception e)
             {
                 if (!Directory.Exists(this.PluginDirectory))
                 {
                     Directory.CreateDirectory(this.PluginDirectory);
+                    this.Warn($"Go to '{path}' and change webhook url!");
                 }
-                if (!File.Exists(this.PluginDirectory + $"/config.json"))
+                if (!File.Exists(path))
                 {
-                    File.Create(this.PluginDirectory + $"/config.json");
-                    File.WriteAllText(this.PluginDirectory + $"/config.json", JsonConvert.SerializeObject(default_settings), Encoding.Unicode);
-                    this.Warn($"Go to '{this.PluginDirectory}/config.json' and change webhook url!");
+                    File.Create(path);
+                    if (File.Exists($"{this.PluginDirectory}/config.json"))
+                    {
+                        settings = JsonConvert.DeserializeObject<Settings>(File.ReadAllText($"{this.PluginDirectory}/config.json", Encoding.UTF8));
+                        this.Warn($"Created a file with port {this.Server.Port} from config");
+                    }
+                    File.WriteAllText(path, JsonConvert.SerializeObject(settings), Encoding.UTF8);
                 }
-                this.Error($"Can't read plugin config, make sure your config is correct!");
-                return;
+                else
+                {
+                    this.Error("Can't read plugin config, make sure your shared config is correct!");
+                    this.Error("Reason: " + e.Message);
+                    return;
+                }
             }
             if (!string.IsNullOrWhiteSpace(settings.webhook_url))
             {
                 bot = new BotHandler(settings.webhook_url);
             }
             this.AddEventHandlers(this);
-            if (File.Exists(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + $"SCP Secret Laboratory/ServerLogs/players_log_{this.Server.Port}.json"))
+            if (File.Exists(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + $"/SCP Secret Laboratory/ServerLogs/players_log_{this.Server.Port}.json"))
             {
-                string context = File.ReadAllText(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + $"SCP Secret Laboratory/ServerLogs/players_log_{this.Server.Port}.json", System.Text.Encoding.Unicode);
+                string context = File.ReadAllText(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + $"SCP Secret Laboratory/ServerLogs/players_log_{this.Server.Port}.json", Encoding.UTF8);
                 if (!string.IsNullOrEmpty(context))
                     GetKills = JsonConvert.DeserializeObject<List<KillCount>>(context);
             }
             Info("LogBot has started");
         }
 
+        public override void Register()
+        {
+            settings = new Settings()
+            {
+                webhook_url = "none",
+                autobans = true,
+                autoban_text = "%nick% has been banned automatically",
+                autoban_reason_text = "You've killed too many people from your team, your punishment duration is %time%",
+            };
+        }
+        #endregion
+
         private void SaveBans() 
         {
             var result = JsonConvert.SerializeObject(GetKills);
-            string path = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) +$"SCP Secret Laboratory/ServerLogs/players_log_{this.Server.Port}.json";
+            string path = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) +$"/SCP Secret Laboratory/ServerLogs/players_log_{this.Server.Port}.json";
             if (!File.Exists(path))
             {
                 File.Create(path);
-                File.WriteAllText(path, JsonConvert.SerializeObject(GetKills), System.Text.Encoding.Unicode);
+                File.WriteAllText(path, JsonConvert.SerializeObject(GetKills), Encoding.UTF8);
             }
         }
-        #endregion
-        public void OnPlayerDie(PlayerDeathEvent ev)
-        {
-            this.Debug($"Someone die");
-            if (ev.Killer.PlayerId == ev.Player.PlayerId || !canLog)
-                return;
-            if ((ev.Killer.TeamRole.Team.Equals(Team.MTF) && ev.Player.TeamRole.Team.Equals(Team.RSC)) ||
-                (ev.Killer.TeamRole.Team.Equals(Team.RSC) && ev.Player.TeamRole.Team.Equals(Team.MTF)) ||
-                (ev.Killer.TeamRole.Team.Equals(Team.CHI) && ev.Player.TeamRole.Team.Equals(Team.CDP)) ||
-                (ev.Killer.TeamRole.Team.Equals(Team.CHI) && ev.Player.TeamRole.Team.Equals(Team.CHI))) 
-            {
-                int index = RegisterKiller(ev.Killer);
-                this.Debug($"Logging kill");
-                bot.Post($"{ev.Killer.Name} killed {ev.Player.Name} using {Enum.GetName(typeof(DamageType), ev.DamageTypeVar)}",
-                    $"{ev.Killer.TeamRole.Name} killed {ev.Player.TeamRole.Name}", ev.Killer.UserId + ev.Killer.IpAddress + "\tKills: " + GetKills[index].kills, 0);
-            } 
-            else if (ev.Killer.TeamRole.Team == ev.Player.TeamRole.Team)
-            {
-                int index = RegisterKiller(ev.Killer);
-                this.Debug($"Logging kill");
-                bot.Post($"{ev.Killer.Name} killed {ev.Player.Name} using {Enum.GetName(typeof(DamageType), ev.DamageTypeVar)}",
-                    $"{ev.Killer.TeamRole.Name} killed {ev.Player.TeamRole.Name}", ev.Killer.UserId + ev.Killer.IpAddress + "\tKills: " + GetKills[index].kills, 0);
-            }
-        }
+        
 
         private int RegisterKiller(Player Killer)
         {
@@ -197,106 +191,7 @@ namespace LogBot
             ply.Ban(duration, reason);
         }
 
-        public void OnBan(BanEvent ev)
-        {
-            bans_count++;
-            if (this.isAutoBan || ev.Duration == 0)
-            {
-                this.isAutoBan = false;
-                return;
-            }    
-            bot.Post($"{ev.Player.Name} get banned",
-                $"Time: {ev.Duration/60} hours", ev.Player.UserId + ev.Player.IpAddress + "\tKills: " + GetKills.Find(x=>x.userID == ev.Player.UserId).kills, 16732240);
-        }
-
-        public void OnRoundEnd(RoundEndEvent ev)
-        {
-            if (ev.Round.Duration < 60)
-                return;
-            bot.Post("Round End", $"Teamkills count: {teamkills_count} | Bans count: {bans_count}", $"Round time: {ev.Round.Duration / 60} minutes", 3289800);
-            canLog = false;
-            SaveBans();
-        }
-        public void OnRoundStart(RoundStartEvent ev)
-        {
-            canLog = true;
-            bot.Post("Round Start",null, null, 3289800);
-            teamkills_count = 0;
-            bans_count = 0;
-        }
-
-        public void OnAdminQuery(AdminQueryEvent ev)
-        {
-            if (ev.Query.Contains("logbot"))
-            {
-                string[] args = ev.Query.Split(' ');
-                if (args[0] == "logbot")
-                {
-                    if (SwitchLogbot(args[1]))
-                    {
-                        ev.Successful = true;
-                        ev.Admin.SendConsoleMessage("Changed!", "yellow");
-                    }
-                    else
-                    {
-                        ev.Successful = false;
-                        ev.Admin.SendConsoleMessage("Usage: logbot [on/off]", "red");
-                    }
-                }
-            }
-            else if (ev.Query.Contains("bcp"))
-            {
-                string[] args = ev.Query.Split(' ');
-                uint time;
-                if (args.Length <= 4)
-                {
-                    int PlayerID;
-                    if (args[2].Contains("@"))
-                    {
-                        PlayerID = this.Server.GetPlayers().Find(x => x.UserId == args[2]).PlayerId;
-                    }
-                    else
-                    {
-                        PlayerID = int.Parse(args[2]);
-                    }
-                    if (args[0] == "bcp" && uint.TryParse(args[1], out time))
-                    {
-                        List<string> text = args.ToList();
-                        text.RemoveRange(0, 3);
-                        string message = string.Join(" ", text.ToArray());
-                        this.Server.GetPlayer(PlayerID).PersonalBroadcast(time, args[3], false);
-                    }
-                    else
-                    {
-                        ev.Output = "Usage: bcp [minutes] [id/steam] [message]";
-                    }
-                    ev.Successful = true;
-                    ev.Admin.SendConsoleMessage("Changed!", "yellow");
-                }
-                else
-                {
-                    ev.Output = "Usage: bcp [minutes] [id/steam] [message]";
-                }
-            }
-            else if(ev.Query.Contains("unban")) 
-            {
-                string path = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + @"\Roaming\SCP Secret Labolatory\config\true\";
-                string[] args = ev.Query.Split(' ');
-                if (args.Length == 3)
-                {
-                    string file = "";
-                    if (args[1] == "ip")
-                        file = "IpBans.txt";
-                    else if (args[1] == "id")
-                        file = "UserIdBans.txt";
-                    List<string> list = File.ReadAllLines(path + file).ToList();
-                    if (list.Exists(x => x.Contains(args[2]))){
-                        list.Remove(list.Find(x => x.Contains(args[2])));
-                        File.WriteAllLines(path + file, list.ToArray());
-                    }
-                }
-            }
-        }
+        
 
         private bool SwitchLogbot(string arg)
         {
@@ -337,7 +232,5 @@ namespace LogBot
             [JsonProperty]
             public string autoban_reason_text;
         }
-
-
     }
 }
