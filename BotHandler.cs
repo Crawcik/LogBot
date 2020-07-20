@@ -1,9 +1,7 @@
 ﻿using Newtonsoft.Json;
 using System;
 using System.IO;
-using System.IO.Pipes;
 using System.Net;
-using System.Runtime.Serialization.Formatters.Binary;
 
 namespace LogBot
 {
@@ -86,41 +84,5 @@ namespace LogBot
                 public string proxy_icon_url;
             }
         }
-        [Serializable]
-        public struct Message
-        {
-            public byte destiny { private set; get; }
-            public object data { private set; get; }
-
-            public Message(byte destiny, object data)
-            {
-                this.destiny = destiny;
-                this.data = data;
-            }
-
-            public static Message Deserialize(byte[] raw_data)
-            {
-                var stream = new MemoryStream(raw_data);
-                var formatter = new BinaryFormatter();
-                return (Message)formatter.Deserialize(stream);
-            }
-
-            public byte[] Serialize()
-            {
-                var formatter = new BinaryFormatter();
-                var stream = new MemoryStream();
-                formatter.Serialize(stream, this);
-                return stream.ToArray();
-            }
-        }
-    }
-    public enum MessageType
-    {
-        SWITCH_LOGBOT,
-        SWITCH_AUTOBANS,
-        SERVER_COUNT,
-        BAN,
-        UNBAN,
-        ERROR
     }
 }

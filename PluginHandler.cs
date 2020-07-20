@@ -33,7 +33,7 @@ namespace LogBot
             {
                 string codeBase = Assembly.GetExecutingAssembly().CodeBase;
                 UriBuilder uri = new UriBuilder(codeBase);
-                return Path.GetDirectoryName(Uri.UnescapeDataString(uri.Path)) + $"/{this.Details.name}";
+                return Path.GetDirectoryName(Uri.UnescapeDataString(uri.Path)) + $"{Path.DirectorySeparatorChar}{this.Details.name}";
             }
         }
 
@@ -66,7 +66,7 @@ namespace LogBot
         {
 
             await Task.Delay(TimeSpan.FromSeconds(8));
-            string path = $"{this.PluginDirectory}/{this.Server.Port}/config.json";
+            string path = $"{this.PluginDirectory}{Path.DirectorySeparatorChar}{this.Server.Port}{Path.DirectorySeparatorChar}config.json";
             try
             {
                 settings = JsonConvert.DeserializeObject<Settings>(File.ReadAllText(path, Encoding.UTF8));
@@ -79,12 +79,16 @@ namespace LogBot
                     Directory.CreateDirectory(this.PluginDirectory);
                     this.Warn($"Go to '{path}' and change webhook url!");
                 }
+                if (!Directory.Exists(this.PluginDirectory + Path.DirectorySeparatorChar + this.Server.Port))
+                {
+                    Directory.CreateDirectory(this.PluginDirectory + Path.DirectorySeparatorChar + this.Server.Port);
+                }
                 if (!File.Exists(path))
                 {
-                    File.Create(path);
-                    if (File.Exists($"{this.PluginDirectory}/config.json"))
+                    File.Create(path).Close();
+                    if (File.Exists($"{this.PluginDirectory}{Path.DirectorySeparatorChar}config.json"))
                     {
-                        settings = JsonConvert.DeserializeObject<Settings>(File.ReadAllText($"{this.PluginDirectory}/config.json", Encoding.UTF8));
+                        settings = JsonConvert.DeserializeObject<Settings>(File.ReadAllText($"{this.PluginDirectory}{Path.DirectorySeparatorChar}config.json", Encoding.UTF8));
                         this.Warn($"Created a file with port {this.Server.Port} from config");
                     }
                     File.WriteAllText(path, JsonConvert.SerializeObject(settings), Encoding.UTF8);
@@ -101,9 +105,9 @@ namespace LogBot
                 bot = new BotHandler(settings.webhook_url);
             }
             this.AddEventHandlers(this);
-            if (File.Exists(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + $"/SCP Secret Laboratory/ServerLogs/players_log_{this.Server.Port}.json"))
+            if (File.Exists(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + $"{Path.DirectorySeparatorChar}SCP Secret Laboratory{Path.DirectorySeparatorChar}ServerLogs{Path.DirectorySeparatorChar}players_log_{this.Server.Port}.json"))
             {
-                string context = File.ReadAllText(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + $"SCP Secret Laboratory/ServerLogs/players_log_{this.Server.Port}.json", Encoding.UTF8);
+                string context = File.ReadAllText(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + $"{Path.DirectorySeparatorChar}SCP Secret Laboratory{Path.DirectorySeparatorChar}ServerLogs{Path.DirectorySeparatorChar}players_log_{this.Server.Port}.json", Encoding.UTF8);
                 if (!string.IsNullOrEmpty(context))
                     GetKills = JsonConvert.DeserializeObject<List<KillCount>>(context);
             }
@@ -112,7 +116,7 @@ namespace LogBot
 
         public override void Register()
         {
-            settings = new Settings()
+            settings = new Settings
             {
                 webhook_url = "none",
                 autobans = true,
@@ -125,7 +129,7 @@ namespace LogBot
         private void SaveBans() 
         {
             var result = JsonConvert.SerializeObject(GetKills);
-            string path = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) +$"/SCP Secret Laboratory/ServerLogs/players_log_{this.Server.Port}.json";
+            string path = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) +$"{Path.DirectorySeparatorChar}SCP Secret Laboratory{Path.DirectorySeparatorChar}ServerLogs{Path.DirectorySeparatorChar}players_log_{this.Server.Port}.json";
             if (!File.Exists(path))
             {
                 File.Create(path);
