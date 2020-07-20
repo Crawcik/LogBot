@@ -23,9 +23,9 @@ namespace LogBot
     langFile = "logbot",
     name = "LogBot",
     SmodMajor = 3,
-    SmodMinor = 7,
+    SmodMinor = 8,
     SmodRevision = 0,
-    version = "2.9")]
+    version = "2.10")]
     public partial class LogbotManager : Plugin
     {
         public string PluginDirectory {
