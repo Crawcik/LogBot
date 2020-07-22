@@ -1,8 +1,7 @@
-﻿using Newtonsoft.Json;
-using System;
-using System.IO;
+﻿using System;
 using System.Net;
 
+using Newtonsoft.Json;
 namespace LogBot
 {
     class BotHandler

@@ -23,7 +23,7 @@ namespace LogBot
     langFile = "logbot",
     name = "LogBot",
     SmodMajor = 3,
-    SmodMinor = 8,
+    SmodMinor = 7,
     SmodRevision = 0,
     version = "2.10")]
     public partial class LogbotManager : Plugin
@@ -128,6 +128,7 @@ namespace LogBot
 
         private void SaveBans() 
         {
+            this.GetTranslation()
             var result = JsonConvert.SerializeObject(GetKills);
             string path = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) +$"{Path.DirectorySeparatorChar}SCP Secret Laboratory{Path.DirectorySeparatorChar}ServerLogs{Path.DirectorySeparatorChar}players_log_{this.Server.Port}.json";
             if (!File.Exists(path))
